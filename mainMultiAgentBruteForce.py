@@ -26,7 +26,7 @@ wallHeight=5.0
 delT=0.001             #time step
 
 #Define how much the motors can spool in or out in one tspan.
-deltaSpool=0.0005 # reduced from original 0.001
+deltaSpool=0.001 # reduced from original 0.001
 
 env=matlab.myEnvironmentSetup(tspan,deltaSpool,delT)
 
@@ -45,7 +45,7 @@ MOTOR_NUMBER=24
 #RENDER=False
 RENDER=True
 # Number of brute force approach cases
-BRUTE_FORCE_CASES=1
+BRUTE_FORCE_CASES=10
 
 maxCoord=[]
 maxDistance=[]
@@ -167,3 +167,5 @@ plt.scatter(x,y1)
 plt.title('Max horizontal displacement of the center of mass for each Neural Network run')
 
 plt.show()
+
+matlab.exit()
