@@ -1,6 +1,6 @@
 classdef myEnvironmentSetup <handle
-    %MYENVIRONMENTSETUP This class contains functions used to emulate
-    %SuperBall's escape from a crater. They are used by the Python's
+    %MYENVIRONMENTSETUP This class contains functions used to simulate
+    %flat ground locomotion with SUPERball v2. They are used by the Python's
     %reinforcement learning algorithm to get information regarding the
     %environment.
     %   Detailed explanation goes here
@@ -22,15 +22,12 @@ classdef myEnvironmentSetup <handle
         
         %Initial parameters that can be initialized from Python
         tspan
-        wallPos
-        wallNeg
-        wallHeight
         cDamp
         deltaSpool
     end
     
     methods
-        function env=myEnvironmentSetup(tspan,wallPosition,wallHeight,deltaSpool,delT)
+        function env=myEnvironmentSetup(tspan,deltaSpool,delT)
             addpath('tensegrityObjects')
 
             % Inputs from user
@@ -43,11 +40,6 @@ classdef myEnvironmentSetup <handle
             env.barStCoeff=100000; % Bar stiffness coeff
             env.delT=delT; % Delta Time
             
-            
-            % Wall 1 and 4 are positive values
-            env.wallPos=wallPosition;
-            env.wallNeg=-wallPosition;
-            env.wallHeight=wallHeight;
             barLength = 1.7; %might break things, original 1.7
             barSpacing = barLength / 4; %0.375;
             env.bars = [1:2:11; 
@@ -94,7 +86,7 @@ classdef myEnvironmentSetup <handle
             stringRestLength = 0.9*ones(24,1)*norm(env.nodes(1,:)-env.nodes(7,:));
 
             env.superBall = TensegrityStructure(env.nodes, env.strings, env.bars, zeros(12,3), env.stringstiffness,...
-                barStiffness, stringDamping, nodalMass, env.delT, env.delT, stringRestLength,env.wallPos,env.wallNeg);
+                barStiffness, stringDamping, nodalMass, env.delT, env.delT, stringRestLength);
 
             env.superBallDynamicsPlot = TensegrityPlot(env.nodes, env.strings, env.bars, bar_radius, string_radius);
             
@@ -110,7 +102,8 @@ classdef myEnvironmentSetup <handle
             % use a method within TensegrityPlot class to generate a plot of the
             % structure
             generatePlot(env.superBallDynamicsPlot,gca);
-            updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+            % updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+            updatePlot(env.superBallDynamicsPlot);
 
             %settings to make it pretty
             axis equal
@@ -125,41 +118,6 @@ classdef myEnvironmentSetup <handle
             zlim(1.6*[-0.01 lims])
             hold on
 
-            % Draw Wall 1
-            wall_x=[env.wallPos env.wallPos;env.wallPos env.wallPos];
-            wall_y=[env.wallPos env.wallNeg;env.wallPos env.wallNeg];
-            wall_z=[0 0;env.wallHeight env.wallHeight];
-
-            walls=surf(wall_x,wall_y,wall_z);
-            %Set wall 1 to be RED
-            set(walls,'FaceColor',[1 0 0],'FaceAlpha',0.5);
-
-            % Draw Wall 2
-            wall_x=[env.wallNeg env.wallNeg;env.wallNeg env.wallNeg];
-            wall_y=[env.wallPos env.wallNeg;env.wallPos env.wallNeg];
-            wall_z=[0 0;env.wallHeight env.wallHeight];
-
-            walls=surf(wall_x,wall_y,wall_z);
-            %Set wall 2 to be GREEN
-            set(walls,'FaceColor',[0 1 0],'FaceAlpha',0.5);
-
-            % Draw Wall 3
-            wall_x=[env.wallPos env.wallNeg;env.wallPos env.wallNeg];
-            wall_y=[env.wallNeg env.wallNeg;env.wallNeg env.wallNeg];
-            wall_z=[0 0;env.wallHeight env.wallHeight];
-
-            walls=surf(wall_x,wall_y,wall_z);
-            %Set wall 3 to be YELLOW
-            set(walls,'FaceColor',[1 1 0],'FaceAlpha',0.5);
-
-            % Draw Wall 4
-            wall_x=[env.wallPos env.wallNeg;env.wallPos env.wallNeg];
-            wall_y=[env.wallPos env.wallPos;env.wallPos env.wallPos];
-            wall_z=[0 0;env.wallHeight env.wallHeight];
-
-            walls=surf(wall_x,wall_y,wall_z);
-            %Set wall 4 to be BLUE
-            set(walls,'FaceColor',[0 0 1],'FaceAlpha',0.5);
 
             xlabel('x'); ylabel('y'); zlabel('z');
         end
@@ -211,13 +169,14 @@ classdef myEnvironmentSetup <handle
         
         %Function that returns the coordinates of the center of mass
         function coordinates=getCenterOfMass(env)
-            coordinates=mean(env.superBallDynamicsPlot.nodePoints(:,3));
+            coordinates=[mean(env.superBallDynamicsPlot.nodePoints(:,1)) mean(env.superBallDynamicsPlot.nodePoints(:,2)) mean(env.superBallDynamicsPlot.nodePoints(:,3))];
         end
                
         
         function updateGraph(env)
             
-            updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+            % updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+            updatePlot(env.superBallDynamicsPlot);
 
             drawnow  %plot it up
             
@@ -252,7 +211,8 @@ classdef myEnvironmentSetup <handle
 
             %reset rewards
             if render
-                updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+                % updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+                updatePlot(env.superBallDynamicsPlot);
                 drawnow  %plot it up
             end
             env.rewards=0;
@@ -277,7 +237,8 @@ classdef myEnvironmentSetup <handle
                 env.superBallDynamicsPlot.nodePoints = env.superBall.ySim(1:end/2,:);
                 
                 if render
-                    updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+                    % updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+                    updatePlot(env.superBallDynamicsPlot);
                     drawnow  %plot it up
                 end
                 i=i+1;
@@ -307,10 +268,10 @@ classdef myEnvironmentSetup <handle
             
             
             env.superBall = TensegrityStructure(env.nodes, env.strings, env.bars, zeros(12,3), env.stringstiffness,...
-            barStiffness, stringDamping, nodalMass, env.delT, env.delT, stringRestLength,env.wallPos,env.wallNeg);
+            barStiffness, stringDamping, nodalMass, env.delT, env.delT, stringRestLength);
             
             if render
-                updatePlot(env.superBallDynamicsPlot,env.superBall.touchingWall);
+                updatePlot(env.superBallDynamicsPlot);
             end
 
         end

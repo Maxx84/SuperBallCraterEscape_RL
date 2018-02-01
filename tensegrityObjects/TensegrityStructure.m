@@ -37,9 +37,6 @@ classdef TensegrityStructure < handle
         ss                    %scalar number of strings
         ySim
         
-        %Wall coordinates
-        wallPos
-        wallNeg
         
         ySimUKF
         groundHeight
@@ -49,20 +46,10 @@ classdef TensegrityStructure < handle
         baseStationPoints
         stringTensions
         
-        %variable used for reward scheme
-        rewardTouchingGnd
-        touchingWall
-        touchingWall1
-        touchingWall2
-        touchingWall3
-        touchingWall4
-        
-        notTouchingGround
-        
     end
     
     methods
-        function obj = TensegrityStructure(nodePoints, stringNodes, barNodes, F,stringStiffness,barStiffness,stringDamping,nodalMass,delT,delTUKF,stringRestLengths,wallPos,wallNeg)
+        function obj = TensegrityStructure(nodePoints, stringNodes, barNodes, F,stringStiffness,barStiffness,stringDamping,nodalMass,delT,delTUKF,stringRestLengths)
             if(size(nodePoints,2)~=3 || ~isnumeric(nodePoints))
                 error('node points should be n by 3 matrix of doubles')
             end
@@ -134,9 +121,9 @@ classdef TensegrityStructure < handle
                 obj.F = F;
             end
             
-%             obj.quadProgOptions = optimoptions('linprog','Algorithm',  'interior-point','Display','off');
-%             
-%             obj.quadProgOptions = optimoptions('quadprog','Algorithm',  'interior-point-convex','Display','off');
+%            obj.quadProgOptions = optimoptions('linprog','Algorithm',  'interior-point','Display','off');
+%            
+%            obj.quadProgOptions = optimoptions('quadprog','Algorithm',  'interior-point-convex','Display','off');
             obj.groundHeight = 0;
             %%%%%%%%%%%%%%%%%%%%Dynamics Variables%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             %these are quick vector lists of bars and strings inserted into simstruct
@@ -165,21 +152,7 @@ classdef TensegrityStructure < handle
                 'topNb',topNb,'botNb',botNb,'topNs',topNs,'botNs',botNs,'stringRestLengths',repmat(stringRestLengths,1,nUKF));
             obj.delT = delT;
             obj.delTUKF = delTUKF;
-            
-            
-            obj.wallPos=wallPos;
-            obj.wallNeg=wallNeg;
 
-            obj.touchingWall=zeros(12,1);
-            
-            obj.rewardTouchingGnd=0;
-            
-            obj.notTouchingGround=logical(zeros(12,1));
-            obj.touchingWall1= logical(zeros(12,1));
-                obj.touchingWall2= logical(zeros(12,1));
-                obj.touchingWall3= logical(zeros(12,1));
-                obj.touchingWall4= logical(zeros(12,1));
-                
             
         end
         
@@ -224,6 +197,7 @@ classdef TensegrityStructure < handle
             fqp = V'*A_g(1:obj.ss,:)*obj.F(:);
             Aqp = -V;
             bqp = sparse(A_g(1:obj.ss,:)*obj.F(:) - minForceDensity);
+           %w = quadprog(Hqp,fqp,Aqp,bqp,[],[],[],[],[],obj.quadProgOptions);
            w = quadProgFast(Hqp,fqp,Aqp,bqp);
            q=A_g(1:obj.ss,:)*obj.F(:) + V*w;
             lengths = sum((obj.nodePoints(obj.simStruct.topNs,:) - obj.nodePoints(obj.simStruct.botNs,:)).^2,2).^0.5;
@@ -243,17 +217,13 @@ classdef TensegrityStructure < handle
         
         %%%%%%%%%%%%%%%%%%% Dynamics Functions %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function dynamicsUpdate(obj,tspan,y0)
-            persistent lastContact lastContactWallYZ lastContactWallXZ 
+            persistent lastContact
             if(nargin>2)
                 obj.ySim = y0;
             end
             if(isempty(obj.ySim))
                 y = sparse([obj.nodePoints; zeros(size(obj.nodePoints))]);
                 lastContact = obj.nodePoints(:,1:2);
-                lastContactWallYZ=obj.nodePoints(:,2:3);
-                lastContactWallXZ=obj.nodePoints(:,[1 3]);
-                %rewardCnt=0;
-                obj.rewardTouchingGnd=0;
             else
                 y = obj.ySim;
             end
@@ -267,15 +237,6 @@ classdef TensegrityStructure < handle
             kk = 1000;
             kFP = 20000;
             kFD = 5000;
-            
-             %friction model constants WALL
-            KpW = 20000;
-            KdW = 5000;
-            muSW = 0.64;
-            muDW = 0.54;
-            kkW = 1000;
-            kFPW = 20000;
-            kFDW = 5000;
 
             sim = obj.simStruct;
             groundH = obj.groundHeight;
@@ -302,42 +263,10 @@ classdef TensegrityStructure < handle
                 yy = yy + (dt/8)*(yDot+3*(yDot1+yDot2)+yDot3);  % main equation
                 yDot = yDot + (dt/8)*(k_1+3*(k_2+k_3)+k_4);  % main equation
                 lastContact(staticNotApplied,:) = yy(staticNotApplied,1:2);
-                lastContactWallYZ(staticNotAppliedWallYZ,:)=yy(staticNotAppliedWallYZ,2:3);
-                lastContactWallXZ(staticNotAppliedWallXZ,:)=yy(staticNotAppliedWallXZ,[1 3]);
             end
             obj.ySim =[yy;yDot];
-            
-            % Calculate angle between vector @ rod and z axis at each endcap
-            zAxis=zeros(12,3);
-            zAxis(:,3)=-1;
-            rodVector=zeros(12,3);
-            base=0;
-            %Compute vector between two endcaps
-            for i=1:6
-                rodVector(i+base,:)=[obj.ySim(i+base,1)-obj.ySim(i+1+base,1) obj.ySim(i+base,2)-obj.ySim(i+1+base,2) obj.ySim(i+base,3)-obj.ySim(i+1+base,3)];
-                rodVector(i+1+base,:)=[obj.ySim(i+1+base,1)-obj.ySim(i+base,1) obj.ySim(i+1+base,2)-obj.ySim(i+base,2) obj.ySim(i+1+base,3)-obj.ySim(i+base,3)];
-                base=base+1;
-            end
-            angle=zeros(12,1);
-            
-            for i=1:12
-                angle(i)=acos(dot(rodVector(i,:),zAxis(i,:))/(norm(rodVector(i,:))*norm(zAxis(i,:))));
-            end
-            % Convert angle in degrees instead of radians
-            angle=angle*180/pi;
-            
-            %Compute rewards
-            rewardWallTouching=[sum(obj.touchingWall1)>0 sum(obj.touchingWall2)>0 sum(obj.touchingWall3)>0 sum(obj.touchingWall4)>0];
-            
-            if and(obj.notTouchingGround==logical(ones(12,1)),sum(rewardWallTouching)>=3)
-                obj.rewardTouchingGnd=1;
 
-            elseif and(obj.notTouchingGround==logical(ones(12,1)),sum(rewardWallTouching)<3)
-                obj.rewardTouchingGnd=-1;
-            else
-                obj.rewardTouchingGnd=0;
-            end
-            
+
             
             function nodeXYZdoubleDot = getAccel(nodeXYZ,nodeXYZdot)
                 memberNodeXYZ = nodeXYZ(topN,:) - nodeXYZ(botN,:); % Member XYZ matrix M
@@ -374,112 +303,39 @@ classdef TensegrityStructure < handle
                 % Forces on each node
                 FF = CC*GG;
                 
-                %update points not in contact with the ground
-                obj.notTouchingGround = (nodeXYZ(:,3) - groundH)>0;
-                
-                %Update points not in contact with the wall
-                %Wall 1 and 2 are on the zy plane
-                %Wall 3 and 4 are on the zx plane
-                %Determine which walls the endcaps are touching
-                obj.touchingWall1= (nodeXYZ(:,1)-obj.wallPos)>0;
-                obj.touchingWall2= (nodeXYZ(:,1)-obj.wallNeg)<0;
-                obj.touchingWall3= (nodeXYZ(:,2)-obj.wallNeg)<0;
-                obj.touchingWall4= (nodeXYZ(:,2)-obj.wallPos)>0;
-                %Determine which endcaps are not touching any wall
-                notTouchingWallYZ = ~obj.touchingWall1 & ~obj.touchingWall2;
-                notTouchingWallXZ = ~obj.touchingWall3 & ~obj.touchingWall4;
-                obj.touchingWall=obj.touchingWall1 | obj.touchingWall2 | obj.touchingWall3 | obj.touchingWall4;
-                
-                %Compute normal forces for the ground
+                %update points not in contact
+                notTouching = (nodeXYZ(:,3) - groundH)>0;
+                %Compute normal forces
                 normForces = (groundH-nodeXYZ(:,3)).*(Kp - Kd*nodeXYZdot(:,3));
-                normForces(obj.notTouchingGround) = 0; %norm forces not touching the ground are zero
-                
-                %Compute normal forces for the wall
-                % Separate computation for stuff on YZ and XZ planes
-                normForcesWallYZ=(obj.wallPos-nodeXYZ(:,1)).*(KpW - KdW*nodeXYZdot(:,1));
-                normForcesWallYZ(obj.touchingWall2)=(obj.wallNeg-nodeXYZ(obj.touchingWall2,1)).*(KpW - KdW*nodeXYZdot(obj.touchingWall2,1));
-                normForcesWallYZ(notTouchingWallYZ)=0;
-                normForcesWallXZ=(obj.wallNeg-nodeXYZ(:,2)).*(KpW - KdW*nodeXYZdot(:,2));
-                normForcesWallXZ(obj.touchingWall4)=(obj.wallPos-nodeXYZ(obj.touchingWall4,2)).*(KpW - KdW*nodeXYZdot(obj.touchingWall4,2));
-                normForcesWallXZ(notTouchingWallXZ)=0;
-                %Get velocity for the three planes (xy,yz and xz)
-                % Velocity on the xy plane will be used for ground forces
-                % computations
-                % Velocity on the yz plane will be used for wall 1 and 2
-                % computations
-                % Velocity on the xz plane will be used for wall 3 and 4
-                % computations
+                normForces(notTouching) = 0; %norm forces not touching are zero
                 xyDot = nodeXYZdot(:,1:2);
-                yzDot = nodeXYZdot(:,2:3);
-                xzDot = nodeXYZdot(:,[1 3]);
                 
                 % Keep nodes of top of structure above a certain height
                 % to simulate bar collisions near packed configuration
                 minHeight = 0.15;
-                obj.notTouchingGround = (nodeXYZ(:,3) - (groundH + minHeight))>0;
+                notTouching = (nodeXYZ(:,3) - (groundH + minHeight))>0;
                 %Compute normal forces
                 normForces2 = ((groundH + minHeight)-nodeXYZ(:,3)).*(Kp - Kd*nodeXYZdot(:,3));
-                normForces2(obj.notTouchingGround) = 0; %norm forces not touching are zero
+                normForces2(notTouching) = 0; %norm forces not touching are zero
                 normForces2(1:2:12, :) = 0; % Don't apply force to other nodes than top ones.
                 
-                %Possible static friction to apply on the gorund
+                %Possible static friction to apply
                 staticF = kFP*(lastContact - nodeXYZ(:,1:2)) - kFD*xyDot;
-                staticNotApplied = (sum((staticF).^2,2) > (muS*normForces).^2)|obj.notTouchingGround;
+                staticNotApplied = (sum((staticF).^2,2) > (muS*normForces).^2)|notTouching;
                 staticF(staticNotApplied,:) = 0;
-                
-                %Possible static friction against the YZ walls
-                staticFYZ= kFPW*(lastContactWallYZ - nodeXYZ(:,2:3)) - kFDW*yzDot;
-                staticNotAppliedWallYZ= (sum((staticFYZ).^2,2) > (muSW*normForcesWallYZ).^2)|notTouchingWallYZ;
-                staticFYZ(staticNotAppliedWallYZ,:)=0;
-                
-                %Possible static friction against the XZ walls
-                staticFXZ= kFPW*(lastContactWallXZ - nodeXYZ(:,[1 3])) - kFDW*xzDot;
-                staticNotAppliedWallXZ= (sum((staticFXZ).^2,2) > (muSW*normForcesWallXZ).^2)|notTouchingWallXZ;
-                staticFXZ(staticNotAppliedWallXZ,:)=0;
-                
-                
                 xyDotMag = sqrt(sum((xyDot).^2,2));
                 w = (1 - exp(-kk*xyDotMag))./xyDotMag;
                 w(xyDotMag<1e-9) = kk;
                 dynamicFmag =  - muD * normForces .*w ;
                 dynamicF = dynamicFmag(:,[1 1]).* xyDot;
                 dynamicF(~staticNotApplied,:) = 0;
-                %Tangent forces for ground contact
                 tangentForces = staticF + dynamicF ;
-                
-                %Dynamic force computation for YZ walls
-                yzDotMag = sqrt(sum((yzDot).^2,2));
-                wYZ = (1 - exp(-kkW*yzDotMag))./yzDotMag;
-                wYZ(yzDotMag<1e-9) = kkW;
-                dynamicFmagYZ =  - muDW * normForcesWallYZ .*wYZ ;
-                dynamicFYZ = dynamicFmagYZ(:,[1 1]).* yzDot;
-                dynamicFYZ(~staticNotAppliedWallYZ,:) = 0;
-                %Tangent forces for ground contact
-                tangentForcesYZ = staticFYZ + dynamicFYZ ;
-                
-                %Dynamic force computation for XZ walls
-                xzDotMag = sqrt(sum((xzDot).^2,2));
-                wXZ = (1 - exp(-kkW*xzDotMag))./xzDotMag;
-                wXZ(xzDotMag<1e-9) = kkW;
-                dynamicFmagXZ =  - muDW * normForcesWallXZ .*wXZ ;
-                dynamicFXZ = dynamicFmagXZ(:,[1 1]).* xzDot;
-                dynamicFXZ(~staticNotAppliedWallXZ,:) = 0;
-                %Tangent forces for ground contact
-                tangentForcesXZ = staticFXZ + dynamicFXZ ;
-                
-                % Sum all the forces given by ground and wall contact on the three axis 
-                forcesX=tangentForces(:,1) + normForcesWallYZ + tangentForcesXZ(:,1); %ground tangent forces + normal forces of wall YZ + tangent forces of wall XZ
-                forcesY= tangentForces(:,2) + tangentForcesYZ(:,1) + normForcesWallXZ;
-                forcesZ= normForces + 0*normForces2 + tangentForcesYZ(:,2) + tangentForcesXZ(:,2);
-                groundForces = [forcesX forcesY forcesZ];
+                groundForces = [tangentForces normForces + 0*normForces2];
                 nodeXYZdoubleDot = (FF+groundForces).*M;
                 
                 % Apply gravity
                 nodeXYZdoubleDot(:,3) = nodeXYZdoubleDot(:,3)  -9.81;
                 nodeXYZdoubleDot(fN,:) = 0;
-
-                
-                
             end
         end
         

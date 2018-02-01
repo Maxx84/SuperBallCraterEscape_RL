@@ -4,6 +4,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import matplotlib
+import math
 matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 # Connects Matlab to Pyhton
@@ -27,7 +28,7 @@ delT=0.001             #time step
 #Define how much the motors can spool in or out in one tspan.
 deltaSpool=0.0005 # reduced from original 0.001
 
-env=matlab.myEnvironmentSetup(tspan,wallPosition,wallHeight,deltaSpool,delT)
+env=matlab.myEnvironmentSetup(tspan,deltaSpool,delT)
 
 matlab.createGraph(env)
 
@@ -41,11 +42,13 @@ sessionTime=600           # Maximum number of cycles in each episode
 error_cnt=0                 #Number of times the simulation crashed
 
 MOTOR_NUMBER=24
-RENDER=False
+#RENDER=False
+RENDER=True
 # Number of brute force approach cases
-BRUTE_FORCE_CASES=200
+BRUTE_FORCE_CASES=1
 
 maxCoord=[]
+maxDistance=[]
 
 
 # Create 1000 neural networks with random weight initialization and biases initialized to zero
@@ -82,9 +85,15 @@ for i in range(BRUTE_FORCE_CASES):
 
     features=np.reshape(features,(1,MOTOR_NUMBER))
 
+    # For some reason, matlab.getCenterOfMass returns an array within an array.
+    initialPosition = matlab.getCenterOfMass(env)[0]
+    print("Initial position = ", initialPosition)
+    
     #Initialize center of mass coordinates to 0
-    centerMassCoord= []
-    maxCoord=np.append(maxCoord,0)
+    centerMassCoord = initialPosition
+    maxDistance=np.append(maxDistance,0)
+
+    prtRefresh = 0
 
     for j in range(sessionTime):
 
@@ -108,33 +117,53 @@ for i in range(BRUTE_FORCE_CASES):
         if RENDER:
             matlab.updateGraph(env)
 
-        coordinate=matlab.getCenterOfMass(env)
+        coordinate=matlab.getCenterOfMass(env)[0]
+
         centerMassCoord=np.append(centerMassCoord,coordinate)
-        if coordinate>maxCoord[i]:
-            maxCoord[i]=coordinate
+        
+        #print("Coordinate array: ", coordinate)
+        
+
+        # sqrt(x^2 + y^2)
+        distanceTraveled = math.sqrt(math.pow(coordinate[0] - initialPosition[0],2) + math.pow(coordinate[1] - initialPosition[1],2))
+        
+        prtRefresh = prtRefresh + 1
+
+        if prtRefresh > 10:
+            print("Temporary distance: ", distanceTraveled)
+            print("Elapsed Time: ", timeit.default_timer() - start)
+            prtRefresh = 0
+
+        if distanceTraveled>maxDistance[i]:
+            maxDistance[i]=distanceTraveled
 
 
     stop = timeit.default_timer()
-    print(maxCoord)
+    
+    # sqrt(x^2 + y^2)
+    distanceTraveled = math.sqrt(math.pow(coordinate[0] - initialPosition[0],2) + math.pow(coordinate[1] - initialPosition[1],2))
+    
+    print("Max distance: ", maxDistance)
+    print("Distance traveled: ", distanceTraveled)
     print ("Iteration time : ",stop - start )
 
 
-print(maxCoord)
-agent["A_"+str(i)+"_"+str(m)].saveCoordinates(maxCoord)
-print(np.amax(maxCoord))
-best=np.argmax(maxCoord)
+print("Max Distance: ", maxDistance)
+agent["A_"+str(i)+"_"+str(m)].saveCoordinates(maxDistance)
+print(np.amax(maxDistance))
+best=np.argmax(maxDistance)
 print(best)
 
 #Show best?
 
 #Plot results
-x=np.arange(0,len(maxCoord))
-y1= maxCoord
+x=np.arange(0,len(maxDistance))
+y1= maxDistance
 
 fig= plt.figure(figsize=(20,10))
 ax1=plt.subplot(211)
 plt.scatter(x,y1)
 
-plt.title('Maximum Z coordinate of the center of mass for each Neural Network run')
+plt.title('Max horizontal displacement of the center of mass for each Neural Network run')
 
 plt.show()

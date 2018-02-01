@@ -12,18 +12,16 @@ classdef TensegrityPlot < handle
         stringRad             %string radius for plotting
         sphereTForm           %transform object for spheres which sit at nodes in plot
         memberTForms              %transform object for bar cylinders
+
         plotErrorFlag           %Signals that an error occurred in the configuration of superBall. Used to quit epoch.
-        h
-        touchingWall
+
     end
     methods
         function obj = TensegrityPlot(nodePoints, stringNodes, barNodes, barRad, stringRad)
-            
-            obj.touchingWall=zeros(12,1);
-            obj.h=cell(12,1);
+
             %Initialize error flag
             obj.plotErrorFlag=0;
-            
+
             if(size(nodePoints,2)~=3 || ~isnumeric(nodePoints))
                 error('node points should be n by 3 matrix of doubles')
             end
@@ -99,7 +97,7 @@ classdef TensegrityPlot < handle
             r = ones(2,1)*obj.barRad;
             [xx,yy,zz] = cylinder(r,cylRes);
             barTForm = gobjects(obj.bb,1);
-            % barColor =[ green;blue;yellow;magenta;cyan;black]
+
             barColor=[ 0 1 0; 0 0 1; 1 1 0; 1 0 1; 0 1 1; 0 0 0];
             for i = 1:obj.bb
                 barHandle = surf(ax,xx,yy,zz,'LineStyle', 'none','FaceColor',barColor(i,:));
@@ -119,31 +117,16 @@ classdef TensegrityPlot < handle
             end
             obj.memberTForms = [barTForm; stringTForm];
         end
+
         
-        function updatePlot(obj,touchingWall)
+        function updatePlot(obj)
             nn = obj.n;
             HH = cell(nn,1);
-            %Change color of endcaps that are touching the walls
-            
-           
-            for i = 1:obj.n
-                if obj.touchingWall(i)>0
-                    set(obj.h{i},'Visible','off');
-                end
-
-            end
-            obj.touchingWall=touchingWall;
-            for i = 1:obj.n
-                if obj.touchingWall(i)>0
-                    obj.h{i}=scatter3(obj.nodePoints(i,1),obj.nodePoints(i,2),obj.nodePoints(i,3));
-                    obj.h{i}.SizeData=150;
-                end
-
-            end
-            
             for i =1:nn
                 HH{i} = [eye(3), obj.nodePoints(i,:)'; 0 0 0 1] ;
             end
+
+
             %Sometimes this update throws an error.
             %Reset error flag
             obj.plotErrorFlag=0;
@@ -161,7 +144,7 @@ classdef TensegrityPlot < handle
                 obj.plotErrorFlag=1;
 
             end
-            
+
             
         end
         
